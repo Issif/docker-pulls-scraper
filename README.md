@@ -34,7 +34,17 @@ owner/image-3
 Log:
 ```
 ❯ go run . -l list.txt
-
+2023/10/17 18:34:58 Folder './outputs' already exists
+2023/10/17 18:34:58 Scrape pull count for the image 'falcosecurity/falco'
+2023/10/17 18:34:59 Writing of the .csv for the image 'falcosecurity/falco' in './outputs/falcosecurity_falco.csv'
+2023/10/17 18:34:59 Scrape pull count for the image 'falcosecurity/falcosidekick'
+2023/10/17 18:34:59 Writing of the .csv for the image 'falcosecurity/falcosidekick' in './outputs/falcosecurity_falcosidekick.csv'
+2023/10/17 18:34:59 Scrape pull count for the image 'falcosecurity/falcosidekick-ui'
+2023/10/17 18:34:59 Writing of the .csv for the image 'falcosecurity/falcosidekick-ui' in './outputs/falcosecurity_falcosidekick-ui.csv'
+2023/10/17 18:34:59 Scrape pull count for the image 'falcosecurity/driverkit'
+2023/10/17 18:34:59 Writing of the .csv for the image 'falcosecurity/driverkit' in './outputs/falcosecurity_driverkit.csv'
+2023/10/17 18:34:59 Scrape pull count for the image 'falcosecurity/falcoctl'
+2023/10/17 18:34:59 Writing of the .csv for the image 'falcosecurity/falcoctl' in './outputs/falcosecurity_falcoctl.csv'
 ```
 
 Example of a `.csv` file:

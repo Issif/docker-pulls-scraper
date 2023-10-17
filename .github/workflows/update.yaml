@@ -1,0 +1,28 @@
+---
+name: Update Pull Counts
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * *'
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    container:
+      image: golang:1.21
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v4
+        with:
+          go-version: '>=1.21'
+      - run: go run . -l list.txt
+      - run: git config --global --add safe.directory /__w/docker-pulls-scraper/docker-pulls-scraper
+      - uses: EndBug/add-and-commit@v9
+        with:
+          message: update .csv files
+          default_author: github_actions
+          commit: --signoff
