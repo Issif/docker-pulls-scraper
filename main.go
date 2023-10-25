@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"html/template"
 	"io"
 	"log"
 	"net/http"
@@ -53,15 +54,18 @@ func main() {
 		log.Fatal(err)
 	}
 	listFileScanner := bufio.NewScanner(listFile)
-	listFileScanner.Split(bufio.ScanLines)
+
+	images := make([]string, 0)
 
 	for listFileScanner.Scan() {
 		image := strings.ReplaceAll(listFileScanner.Text(), " ", "")
-		// count := getPullCount(image)
-		// writeCSV(image, count, *dataFolder)
+		images = append(images, image)
+		count := getPullCount(image)
+		writeCSV(image, count, *dataFolder)
 		renderChart(image, *dataFolder, *renderFolder)
 	}
 
+	updateIndexHTML(images)
 }
 
 func writeCSV(image string, count int, dataFolder string) {
@@ -72,20 +76,17 @@ func writeCSV(image string, count int, dataFolder string) {
 	f, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		log.Fatal(err)
-		return
 	}
 	defer f.Close()
 
 	if os.IsNotExist(errorExist) {
 		if _, err := f.WriteString("Date,Count\n"); err != nil {
 			log.Fatal(err)
-			return
 		}
 	}
 
 	if _, err := f.WriteString(fmt.Sprintf("%v,%v\n", time.Now().Format("2006/01/02"), count)); err != nil {
 		log.Fatal(err)
-		return
 	}
 }
 
@@ -110,14 +111,59 @@ func renderChart(image string, dataFolder, renderFolder string) {
 	}
 
 	bar := charts.NewLine()
-	bar.SetGlobalOptions(charts.WithTitleOpts(opts.Title{
-		Title: image,
-	}))
+	bar.SetGlobalOptions(
+		charts.WithTitleOpts(opts.Title{
+			Title: image,
+		}),
+		charts.WithTooltipOpts(opts.Tooltip{
+			Show:    true,
+			Trigger: "axis",
+		}),
+	)
 
 	bar.SetXAxis(xAxis).
 		AddSeries("# pulls", yAxis)
 	f, _ := os.Create(fmt.Sprintf("%v/%v.html", renderFolder, baseName))
 	bar.Render(f)
+}
+
+func updateIndexHTML(images []string) {
+	log.Println("Writing of the index.html")
+
+	templateStr := `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Go Template</title>
+</head>
+<body>
+	{{- range . }}
+	<p><a href="render/{{ replace . "/" "_" }}.html">{{ . }}</a></p>
+	{{- end }}
+</body>
+</html>`
+	parsedTemplate, err := template.
+		New("index").
+		Funcs(template.FuncMap{
+			"replace": func(input, from, to string) string {
+				return strings.ReplaceAll(input, from, to)
+			},
+		}).
+		Parse(templateStr)
+	if err != nil {
+		log.Fatal(err)
+	}
+	f, err := os.OpenFile("index.html", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0744)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer f.Close()
+	err = parsedTemplate.Execute(f, images)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 func getPullCount(image string) int {
