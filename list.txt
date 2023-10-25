@@ -2,5 +2,11 @@ falcosecurity/falco
 falcosecurity/falcosidekick
 falcosecurity/falcosidekick-ui
 falcosecurity/driverkit
+falcosecurity/driverkit-builder
 falcosecurity/falcoctl
+falcosecurity/falco-driver-loader-legacy
+falcosecurity/falco-driver-loader
+falcosecurity/falco-no-driver
+falcosecurity/falco-exporter
+falcosecurity/falco-event-generator
 issif/cercat
