@@ -13,17 +13,26 @@ import (
 	"strings"
 	"time"
 
+	humanize "github.com/dustin/go-humanize"
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
 )
 
-type Stats struct {
-	PullCount int `json:"pull_count"`
+type Image struct {
+	Name       string
+	Count      int64 `json:"pull_count"`
+	CommaCount string
 }
+
+var images []Image
 
 const (
 	URLBase = "https://hub.docker.com/v2/repositories/"
 )
+
+func init() {
+	images = make([]Image, 0)
+}
 
 func main() {
 	list := flag.String("l", "", "File with the list of images to track")
@@ -55,22 +64,22 @@ func main() {
 	}
 	listFileScanner := bufio.NewScanner(listFile)
 
-	images := make([]string, 0)
-
 	for listFileScanner.Scan() {
-		image := strings.ReplaceAll(listFileScanner.Text(), " ", "")
-		images = append(images, image)
-		count := getPullCount(image)
-		writeCSV(image, count, *dataFolder)
-		renderChart(image, *dataFolder, *renderFolder)
+		i := strings.ReplaceAll(listFileScanner.Text(), " ", "")
+		getPullCount(i)
 	}
 
-	updateIndexHTML(images)
+	for _, i := range images {
+		writeCSV(i, *dataFolder)
+		renderChart(i, *dataFolder, *renderFolder)
+	}
+
+	updateIndexHTML()
 }
 
-func writeCSV(image string, count int, dataFolder string) {
-	filename := fmt.Sprintf("%v/%v.csv", dataFolder, strings.ReplaceAll(image, "/", "_"))
-	log.Printf("Writing of the .csv for the image '%v' in '%v'\n", image, filename)
+func writeCSV(image Image, dataFolder string) {
+	filename := fmt.Sprintf("%v/%v.csv", dataFolder, strings.ReplaceAll(image.Name, "/", "_"))
+	log.Printf("Writing of the .csv for the image '%v' in '%v'\n", image.Name, filename)
 
 	_, errorExist := os.Stat(filename)
 	f, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -85,14 +94,14 @@ func writeCSV(image string, count int, dataFolder string) {
 		}
 	}
 
-	if _, err := f.WriteString(fmt.Sprintf("%v,%v\n", time.Now().Format("2006/01/02"), count)); err != nil {
+	if _, err := f.WriteString(fmt.Sprintf("%v,%v\n", time.Now().Format("2006/01/02"), image.Count)); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func renderChart(image string, dataFolder, renderFolder string) {
-	baseName := strings.ReplaceAll(image, "/", "_")
-	log.Printf("Writing of the .html for the image '%v' in '%v'\n", image, fmt.Sprintf("%v/%v.html", renderFolder, baseName))
+func renderChart(image Image, dataFolder, renderFolder string) {
+	baseName := strings.ReplaceAll(image.Name, "/", "_")
+	log.Printf("Writing of the .html for the image '%v' in '%v'\n", image.Name, fmt.Sprintf("%v/%v.html", renderFolder, baseName))
 	readFile, err := os.Open(fmt.Sprintf("%v/%v.csv", dataFolder, baseName))
 	if err != nil {
 		log.Fatal(err)
@@ -110,24 +119,28 @@ func renderChart(image string, dataFolder, renderFolder string) {
 		yAxis = append(yAxis, opts.LineData{Value: strings.Split(s, ",")[1]})
 	}
 
-	bar := charts.NewLine()
-	bar.SetGlobalOptions(
-		charts.WithTitleOpts(opts.Title{
-			Title: image,
-		}),
+	line := charts.NewLine()
+	line.SetGlobalOptions(
+		charts.WithInitializationOpts(
+			opts.Initialization{
+				PageTitle: image.Name},
+		),
+		charts.WithTitleOpts(
+			opts.Title{
+				Title: image.Name,
+			}),
 		charts.WithTooltipOpts(opts.Tooltip{
 			Show:    true,
 			Trigger: "axis",
 		}),
 	)
 
-	bar.SetXAxis(xAxis).
-		AddSeries("# pulls", yAxis)
+	line.SetXAxis(xAxis).AddSeries("# pulls", yAxis)
 	f, _ := os.Create(fmt.Sprintf("%v/%v.html", renderFolder, baseName))
-	bar.Render(f)
+	line.Render(f)
 }
 
-func updateIndexHTML(images []string) {
+func updateIndexHTML() {
 	log.Println("Writing of the index.html")
 
 	templateStr := `
@@ -136,12 +149,32 @@ func updateIndexHTML(images []string) {
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Go Template</title>
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+	<title>Docker pull counts</title>
 </head>
 <body>
-	{{- range . }}
-	<p><a href="render/{{ replace . "/" "_" }}.html">{{ . }}</a></p>
-	{{- end }}
+	<div class="row">
+		<div class="col s3">
+		<table class="striped responsive-table" style="margin: 20px">
+			<thead>
+				<tr>
+					<th>Image</th>
+					<th>Last count</th>
+					<th>Chart</th>
+				</tr>
+			</thead>
+			<tbody>
+				{{- range . }}
+				<tr>
+					<td><a href="https://hub.docker.com/r/{{ .Name }}">{{ .Name }}</a></td>
+					<td>{{ .CommaCount }}</td>
+					<td><a href="render/{{ replace .Name "/" "_" }}.html">link</a></td>
+				</tr>
+				{{- end }}
+			</tbody>
+		</table>
+		</div>
+	</div>
 </body>
 </html>`
 	parsedTemplate, err := template.
@@ -166,7 +199,7 @@ func updateIndexHTML(images []string) {
 	}
 }
 
-func getPullCount(image string) int {
+func getPullCount(image string) {
 	log.Printf("Scrape pull count for the image '%v'\n", image)
 	res, err := http.Get(URLBase + image)
 	if err != nil {
@@ -178,7 +211,9 @@ func getPullCount(image string) int {
 		log.Fatal(err)
 	}
 
-	var s Stats
-	json.Unmarshal(body, &s)
-	return s.PullCount
+	var i Image
+	json.Unmarshal(body, &i)
+	i.Name = image
+	i.CommaCount = humanize.Comma(i.Count)
+	images = append(images, i)
 }
