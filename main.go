@@ -11,6 +11,9 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/go-echarts/go-echarts/v2/charts"
+	"github.com/go-echarts/go-echarts/v2/opts"
 )
 
 type Stats struct {
@@ -23,7 +26,8 @@ const (
 
 func main() {
 	list := flag.String("l", "", "File with the list of images to track")
-	folder := flag.String("f", "./outputs", "Destination folder for .csv")
+	dataFolder := flag.String("d", "./data", "Destination folder for .csv")
+	renderFolder := flag.String("r", "./render", "Destination folder for the .html")
 	flag.Parse()
 
 	if *list == "" {
@@ -31,11 +35,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := os.Mkdir("outputs", os.ModePerm); err != nil {
+	if err := os.Mkdir(*dataFolder, os.ModePerm); err != nil {
 		if !os.IsExist(err) {
 			log.Fatal(err)
 		}
-		log.Printf("Folder '%v' already exists\n", *folder)
+		log.Printf("Folder '%v' already exists\n", *dataFolder)
+	}
+	if err := os.Mkdir(*renderFolder, os.ModePerm); err != nil {
+		if !os.IsExist(err) {
+			log.Fatal(err)
+		}
+		log.Printf("Folder '%v' already exists\n", *renderFolder)
 	}
 
 	listFile, err := os.Open(*list)
@@ -47,14 +57,15 @@ func main() {
 
 	for listFileScanner.Scan() {
 		image := strings.ReplaceAll(listFileScanner.Text(), " ", "")
-		count := getPullCount(image)
-		writeCSV(image, count, *folder)
+		// count := getPullCount(image)
+		// writeCSV(image, count, *dataFolder)
+		renderChart(image, *dataFolder, *renderFolder)
 	}
 
 }
 
-func writeCSV(image string, count int, folder string) {
-	filename := fmt.Sprintf("%v/%v.csv", folder, strings.ReplaceAll(image, "/", "_"))
+func writeCSV(image string, count int, dataFolder string) {
+	filename := fmt.Sprintf("%v/%v.csv", dataFolder, strings.ReplaceAll(image, "/", "_"))
 	log.Printf("Writing of the .csv for the image '%v' in '%v'\n", image, filename)
 
 	_, errorExist := os.Stat(filename)
@@ -76,6 +87,37 @@ func writeCSV(image string, count int, folder string) {
 		log.Fatal(err)
 		return
 	}
+}
+
+func renderChart(image string, dataFolder, renderFolder string) {
+	baseName := strings.ReplaceAll(image, "/", "_")
+	log.Printf("Writing of the .html for the image '%v' in '%v'\n", image, fmt.Sprintf("%v/%v.html", renderFolder, baseName))
+	readFile, err := os.Open(fmt.Sprintf("%v/%v.csv", dataFolder, baseName))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer readFile.Close()
+
+	xAxis := make([]string, 0)
+	yAxis := make([]opts.LineData, 0)
+
+	fileScanner := bufio.NewScanner(readFile)
+	fileScanner.Scan()
+	for fileScanner.Scan() {
+		s := fileScanner.Text()
+		xAxis = append(xAxis, strings.Split(s, ",")[0])
+		yAxis = append(yAxis, opts.LineData{Value: strings.Split(s, ",")[1]})
+	}
+
+	bar := charts.NewLine()
+	bar.SetGlobalOptions(charts.WithTitleOpts(opts.Title{
+		Title: image,
+	}))
+
+	bar.SetXAxis(xAxis).
+		AddSeries("# pulls", yAxis)
+	f, _ := os.Create(fmt.Sprintf("%v/%v.html", renderFolder, baseName))
+	bar.Render(f)
 }
 
 func getPullCount(image string) int {
