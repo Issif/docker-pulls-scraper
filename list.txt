@@ -10,3 +10,4 @@ falcosecurity/falco-no-driver
 falcosecurity/falco-exporter
 falcosecurity/falco-event-generator
 issif/cercat
+issif/falco-talon
