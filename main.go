@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,8 +21,8 @@ import (
 
 type Image struct {
 	Name       string
-	Count      int64 `json:"pull_count"`
-	CommaCount string
+	Count      int `json:"pull_count"`
+	HumanCount string
 }
 
 var images []Image
@@ -63,10 +64,12 @@ func main() {
 		log.Fatal(err)
 	}
 	listFileScanner := bufio.NewScanner(listFile)
-
 	for listFileScanner.Scan() {
 		i := strings.ReplaceAll(listFileScanner.Text(), " ", "")
 		getPullCount(i)
+	}
+	if err := listFileScanner.Err(); err != nil {
+		log.Fatal(err)
 	}
 
 	for _, i := range images {
@@ -82,19 +85,34 @@ func writeCSV(image Image, dataFolder string) {
 	log.Printf("Writing of the .csv for the image '%v' in '%v'\n", image.Name, filename)
 
 	_, errorExist := os.Stat(filename)
-	f, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer f.Close()
 
+	var delta int
+
 	if os.IsNotExist(errorExist) {
-		if _, err := f.WriteString("Date,Count\n"); err != nil {
+		if _, err := f.WriteString("Date,Count,Delta\n"); err != nil {
 			log.Fatal(err)
 		}
+	} else {
+		var lastLine string
+		fileScanner := bufio.NewScanner(f)
+		for fileScanner.Scan() {
+			if l := fileScanner.Text(); l != "" {
+				lastLine = l
+			}
+		}
+		if err := fileScanner.Err(); err != nil {
+			log.Fatal(err)
+		}
+		lastCount, _ := strconv.Atoi(strings.Split(lastLine, ",")[1])
+		delta = image.Count - lastCount
 	}
 
-	if _, err := f.WriteString(fmt.Sprintf("%v,%v\n", time.Now().Format("2006/01/02"), image.Count)); err != nil {
+	if _, err := f.WriteString(fmt.Sprintf("%v,%v,%v\n", time.Now().Format("2006/01/02"), image.Count, delta)); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -102,42 +120,65 @@ func writeCSV(image Image, dataFolder string) {
 func renderChart(image Image, dataFolder, renderFolder string) {
 	baseName := strings.ReplaceAll(image.Name, "/", "_")
 	log.Printf("Writing of the .html for the image '%v' in '%v'\n", image.Name, fmt.Sprintf("%v/%v.html", renderFolder, baseName))
-	readFile, err := os.Open(fmt.Sprintf("%v/%v.csv", dataFolder, baseName))
+	f, err := os.Open(fmt.Sprintf("%v/%v.csv", dataFolder, baseName))
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer readFile.Close()
+	defer f.Close()
 
-	xAxis := make([]string, 0)
-	yAxis := make([]opts.LineData, 0)
+	xData := make([]string, 0)
+	yDataL := make([]opts.LineData, 0)
+	yDataR := make([]opts.LineData, 0)
 
-	fileScanner := bufio.NewScanner(readFile)
+	fileScanner := bufio.NewScanner(f)
 	fileScanner.Scan()
 	for fileScanner.Scan() {
 		s := fileScanner.Text()
-		xAxis = append(xAxis, strings.Split(s, ",")[0])
-		yAxis = append(yAxis, opts.LineData{Value: strings.Split(s, ",")[1]})
+		xData = append(xData, strings.Split(s, ",")[0])
+		yDataL = append(yDataL, opts.LineData{Value: strings.Split(s, ",")[1]})
+		yDataR = append(yDataR, opts.LineData{Value: strings.Split(s, ",")[2]})
+	}
+	if err := fileScanner.Err(); err != nil {
+		log.Fatal(err)
 	}
 
 	line := charts.NewLine()
 	line.SetGlobalOptions(
-		charts.WithInitializationOpts(
-			opts.Initialization{
-				PageTitle: image.Name},
-		),
-		charts.WithTitleOpts(
-			opts.Title{
-				Title: image.Name,
-			}),
+		charts.WithInitializationOpts(opts.Initialization{Width: "100%", Height: "95vh"}),
+		charts.WithTitleOpts(opts.Title{
+			Title: image.Name,
+		}),
+		charts.WithLegendOpts(opts.Legend{
+			Show:         true,
+			SelectedMode: "multiple",
+		}),
 		charts.WithTooltipOpts(opts.Tooltip{
 			Show:    true,
 			Trigger: "axis",
+			AxisPointer: &opts.AxisPointer{
+				Type: "cross",
+				Snap: true,
+			},
+		}),
+		charts.WithYAxisOpts(opts.YAxis{
+			Name: "# pulls",
+			Type: "value",
+			Show: true,
 		}),
 	)
 
-	line.SetXAxis(xAxis).AddSeries("# pulls", yAxis)
-	f, _ := os.Create(fmt.Sprintf("%v/%v.html", renderFolder, baseName))
-	line.Render(f)
+	line.ExtendYAxis(opts.YAxis{
+		Name:  "delta",
+		Type:  "value",
+		Show:  true,
+		Scale: true,
+	})
+
+	line.SetXAxis(xData)
+	line.AddSeries("delta", yDataR, charts.WithLineChartOpts(opts.LineChart{YAxisIndex: 1, Color: "#ff9b00"}))
+	line.AddSeries("# pulls", yDataL)
+	o, _ := os.Create(fmt.Sprintf("%v/%v.html", renderFolder, baseName))
+	line.Render(o)
 }
 
 func updateIndexHTML() {
@@ -150,6 +191,7 @@ func updateIndexHTML() {
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+	<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
 	<title>Docker pull counts</title>
 </head>
 <body>
@@ -167,8 +209,8 @@ func updateIndexHTML() {
 				{{- range . }}
 				<tr>
 					<td><a href="https://hub.docker.com/r/{{ .Name }}">{{ .Name }}</a></td>
-					<td>{{ .CommaCount }}</td>
-					<td><a href="render/{{ replace .Name "/" "_" }}.html">link</a></td>
+					<td>{{ .HumanCount }}</td>
+					<td><a href="render/{{ replace .Name "/" "_" }}.html"><span class="material-symbols-outlined">monitoring</span></a></td>
 				</tr>
 				{{- end }}
 			</tbody>
@@ -188,7 +230,7 @@ func updateIndexHTML() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	f, err := os.OpenFile("index.html", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0744)
+	f, err := os.OpenFile("index.html", os.O_RDWR|os.O_CREATE, 0744)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -214,6 +256,6 @@ func getPullCount(image string) {
 	var i Image
 	json.Unmarshal(body, &i)
 	i.Name = image
-	i.CommaCount = humanize.Comma(i.Count)
+	i.HumanCount = humanize.Comma(int64(i.Count))
 	images = append(images, i)
 }
