@@ -144,7 +144,10 @@ func renderChart(image Image, dataFolder, renderFolder string) {
 
 	line := charts.NewLine()
 	line.SetGlobalOptions(
-		charts.WithInitializationOpts(opts.Initialization{Width: "100%", Height: "95vh"}),
+		charts.WithInitializationOpts(opts.Initialization{
+			PageTitle: image.Name,
+			Width:     "100%",
+			Height:    "95vh"}),
 		charts.WithTitleOpts(opts.Title{
 			Title: image.Name,
 		}),
