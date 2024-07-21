@@ -151,6 +151,11 @@ func renderChart(image Image, dataFolder, renderFolder string) {
 		charts.WithTitleOpts(opts.Title{
 			Title: image.Name,
 		}),
+		charts.WithDataZoomOpts(opts.DataZoom{
+			Type:  "slider",
+			Start: 0,
+			End:   100,
+		}),
 		charts.WithLegendOpts(opts.Legend{
 			Show:         true,
 			SelectedMode: "multiple",
