@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -151,39 +152,40 @@ func renderChart(image Image, dataFolder, renderFolder string) {
 		charts.WithTitleOpts(opts.Title{
 			Title: image.Name,
 		}),
+		charts.WithColorsOpts(opts.Colors{"#ff9999", "#00ff77"}),
 		charts.WithDataZoomOpts(opts.DataZoom{
 			Type:  "slider",
 			Start: 0,
 			End:   100,
 		}),
 		charts.WithLegendOpts(opts.Legend{
-			Show:         true,
+			Show:         opts.Bool(true),
 			SelectedMode: "multiple",
 		}),
 		charts.WithTooltipOpts(opts.Tooltip{
-			Show:    true,
+			Show:    opts.Bool(true),
 			Trigger: "axis",
 			AxisPointer: &opts.AxisPointer{
 				Type: "cross",
-				Snap: true,
+				Snap: opts.Bool(true),
 			},
 		}),
 		charts.WithYAxisOpts(opts.YAxis{
 			Name: "# pulls",
 			Type: "value",
-			Show: true,
+			Show: opts.Bool(true),
 		}),
 	)
 
 	line.ExtendYAxis(opts.YAxis{
 		Name:  "delta",
 		Type:  "value",
-		Show:  true,
-		Scale: true,
+		Show:  opts.Bool(true),
+		Scale: opts.Bool(true),
 	})
 
 	line.SetXAxis(xData)
-	line.AddSeries("delta", yDataR, charts.WithLineChartOpts(opts.LineChart{YAxisIndex: 1, Color: "#ff9b00"}))
+	line.AddSeries("delta", yDataR, charts.WithLineChartOpts(opts.LineChart{YAxisIndex: 1}))
 	line.AddSeries("# pulls", yDataL)
 	o, _ := os.Create(fmt.Sprintf("%v/%v.html", renderFolder, baseName))
 	line.Render(o)
@@ -243,6 +245,11 @@ func updateIndexHTML() {
 		log.Fatal(err)
 	}
 	defer f.Close()
+
+	sort.Slice(images, func(i, j int) bool {
+		return images[i].Count > images[j].Count
+	})
+
 	err = parsedTemplate.Execute(f, images)
 	if err != nil {
 		log.Fatal(err)
