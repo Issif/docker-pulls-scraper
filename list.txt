@@ -9,5 +9,6 @@ falcosecurity/falco-driver-loader
 falcosecurity/falco-no-driver
 falcosecurity/falco-exporter
 falcosecurity/falco-event-generator
+falcosecurity/falco-talon
 issif/cercat
 issif/falco-talon
