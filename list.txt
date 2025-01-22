@@ -12,3 +12,5 @@ falcosecurity/falco-event-generator
 falcosecurity/falco-talon
 issif/cercat
 issif/falco-talon
+issif/tcpdump
+issif/sysdig
