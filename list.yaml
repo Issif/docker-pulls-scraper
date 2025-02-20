@@ -25,3 +25,7 @@ sums:
     images:
       - falcosecurity/falco-driver-loader-legacy
       - falcosecurity/falco-driver-loader
+  - name: falco-talon
+    images:
+      - falcosecurity/falco-talon
+      - issif/falco-talon

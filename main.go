@@ -235,6 +235,8 @@ func AddMarklines(line *charts.Line, image string) {
 		releases = falco_versions()
 	case "SUM_falco", "SUM_falco-driver-loader":
 		releases = falco_versions()
+	case "falcosecurity_falco-talon", "SUM_falco-talon":
+		releases = falco_talon_versions()
 	}
 
 	for date, version := range releases {
@@ -496,6 +498,17 @@ func falcosidekick_ui_versions() map[string]string {
 		"2022/06/05": "2.0.2",
 		"2023/01/10": "2.1.0",
 		"2023/09/14": "2.2.0",
+	}
+	return releases
+}
+
+func falco_talon_versions() map[string]string {
+	releases := map[string]string{
+		"2024/09/06": "0.1.0",
+		"2024/10/01": "0.1.1",
+		"2024/11/27": "0.2.O",
+		"2024/12/09": "0.2.1",
+		"2025/02/07": "0.3.0",
 	}
 	return releases
 }
