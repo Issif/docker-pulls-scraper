@@ -18,7 +18,16 @@ import (
 	humanize "github.com/dustin/go-humanize"
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
+	yaml "gopkg.in/yaml.v3"
 )
+
+type List struct {
+	Images []string `yaml:"images"`
+	Sums   []struct {
+		Name   string   `yaml:"name"`
+		Images []string `yaml:"images"`
+	} `yaml:"sums"`
+}
 
 type Image struct {
 	Name       string
@@ -26,7 +35,10 @@ type Image struct {
 	HumanCount string
 }
 
-var images []Image
+var (
+	list   List
+	images []Image
+)
 
 const (
 	URLBase = "https://hub.docker.com/v2/repositories/"
@@ -37,12 +49,12 @@ func init() {
 }
 
 func main() {
-	list := flag.String("l", "", "File with the list of images to track")
+	l := flag.String("l", "", "YAML file with the list of images to track")
 	dataFolder := flag.String("d", "./data", "Destination folder for .csv")
 	renderFolder := flag.String("r", "./render", "Destination folder for the .html")
 	flag.Parse()
 
-	if *list == "" {
+	if *l == "" {
 		flag.Usage()
 		os.Exit(1)
 	}
@@ -60,17 +72,31 @@ func main() {
 		log.Printf("Folder '%v' already exists\n", *renderFolder)
 	}
 
-	listFile, err := os.Open(*list)
+	yamlFile, err := os.ReadFile(*l)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Read file: '%v'\n", err)
 	}
-	listFileScanner := bufio.NewScanner(listFile)
-	for listFileScanner.Scan() {
-		i := strings.ReplaceAll(listFileScanner.Text(), " ", "")
+	if err := yaml.Unmarshal(yamlFile, &list); err != nil {
+		log.Fatalf("Unmarshal: '%v'\n", err)
+	}
+
+	for _, i := range list.Images {
 		getPullCount(i)
 	}
-	if err := listFileScanner.Err(); err != nil {
-		log.Fatal(err)
+
+	for _, i := range list.Sums {
+		s := Image{
+			Name: "SUM/" + i.Name,
+		}
+		for _, j := range i.Images {
+			for _, k := range images {
+				if j == k.Name {
+					s.Count += k.Count
+				}
+			}
+		}
+		s.HumanCount = humanize.Comma(int64(s.Count))
+		images = append(images, s)
 	}
 
 	for _, i := range images {
@@ -207,6 +233,8 @@ func AddMarklines(line *charts.Line, image string) {
 		releases = falcoctl_versions()
 	case "falcosecurity_falco", "falcosecurity_falco-no-driver", "falcosecurity_falco-driver-loader", "falcosecurity_falco-driver-loader-legacy":
 		releases = falco_versions()
+	case "SUM_falco", "SUM_falco-driver-loader":
+		releases = falco_versions()
 	}
 
 	for date, version := range releases {
@@ -253,9 +281,10 @@ func updateIndexHTML() {
 	<title>Docker pull counts</title>
 </head>
 <body>
-	<div class="row">
+	<div class="row flex">
 		<div class="col s3">
 		<table class="striped responsive-table" style="margin: 20px">
+			<caption>IMAGES</caption>
 			<thead>
 				<tr>
 					<th>Image</th>
@@ -265,11 +294,36 @@ func updateIndexHTML() {
 			</thead>
 			<tbody>
 				{{- range . }}
+				{{ if not (hasPrefix .Name "SUM") }}
+					<tr>
+						<td><a href="https://hub.docker.com/r/{{ .Name }}">{{ .Name }}</a></td>
+						<td>{{ .HumanCount }}</td>
+						<td><a href="render/{{ replace .Name "/" "_" }}.html"><span class="material-symbols-outlined">monitoring</span></a></td>
+					</tr>
+				{{ end }}
+				{{- end }}
+			</tbody>
+		</table>
+		</div>
+		<div class="col s3">
+		<table class="striped responsive-table" style="margin: 20px">
+			<caption>SUMS</caption>
+			<thead>
 				<tr>
-					<td><a href="https://hub.docker.com/r/{{ .Name }}">{{ .Name }}</a></td>
-					<td>{{ .HumanCount }}</td>
-					<td><a href="render/{{ replace .Name "/" "_" }}.html"><span class="material-symbols-outlined">monitoring</span></a></td>
+					<th>Image</th>
+					<th>Last count</th>
+					<th>Chart</th>
 				</tr>
+			</thead>
+			<tbody>
+				{{- range . }}
+				{{ if (hasPrefix .Name "SUM") }}
+					<tr>
+						<td><a href="https://hub.docker.com/r/{{ .Name }}">{{ .Name }}</a></td>
+						<td>{{ .HumanCount }}</td>
+						<td><a href="render/{{ replace .Name "/" "_" }}.html"><span class="material-symbols-outlined">monitoring</span></a></td>
+					</tr>
+				{{ end }}
 				{{- end }}
 			</tbody>
 		</table>
@@ -283,6 +337,9 @@ func updateIndexHTML() {
 			"replace": func(input, from, to string) string {
 				return strings.ReplaceAll(input, from, to)
 			},
+		}).
+		Funcs(template.FuncMap{
+			"hasPrefix": strings.HasPrefix,
 		}).
 		Parse(templateStr)
 	if err != nil {

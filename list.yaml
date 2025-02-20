@@ -1,0 +1,27 @@
+images:
+  - falcosecurity/falco
+  - falcosecurity/falcosidekick
+  - falcosecurity/falcosidekick-ui
+  - falcosecurity/driverkit
+  - falcosecurity/driverkit-builder
+  - falcosecurity/falcoctl
+  - falcosecurity/falco-driver-loader-legacy
+  - falcosecurity/falco-driver-loader
+  - falcosecurity/falco-no-driver
+  - falcosecurity/falco-exporter
+  - falcosecurity/falco-event-generator
+  - falcosecurity/falco-talon
+  - issif/cercat
+  - issif/falco-talon
+  - issif/tcpdump
+  - issif/sysdig
+
+sums:
+  - name: falco
+    images:
+      - falcosecurity/falco-no-driver
+      - falcosecurity/falco
+  - name: falco-driver-loader
+    images:
+      - falcosecurity/falco-driver-loader-legacy
+      - falcosecurity/falco-driver-loader
