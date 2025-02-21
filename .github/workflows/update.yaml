@@ -19,7 +19,7 @@ jobs:
       - uses: actions/setup-go@v4
         with:
           go-version: '>=1.21'
-      - run: go run . -l list.txt
+      - run: go run . -l list.yaml
       - run: git config --global --add safe.directory /__w/docker-pulls-scraper/docker-pulls-scraper
       - uses: EndBug/add-and-commit@v9
         with:
