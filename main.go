@@ -27,6 +27,10 @@ type List struct {
 		Name   string   `yaml:"name"`
 		Images []string `yaml:"images"`
 	} `yaml:"sums"`
+	Versions []struct {
+		Images   []string          `yaml:"images"`
+		Releases map[string]string `yaml:"releases"`
+	} `yaml:"versions"`
 }
 
 type Image struct {
@@ -214,7 +218,15 @@ func renderChart(image Image, dataFolder, renderFolder string) {
 	line.SetXAxis(xData)
 	line.AddSeries("# pulls", yDataL)
 
-	AddMarklines(line, baseName)
+	for _, i := range list.Versions {
+		for _, j := range i.Images {
+			if image.Name == j {
+				for date, version := range i.Releases {
+					AddMarkline(line, date, version)
+				}
+			}
+		}
+	}
 
 	line.AddSeries("delta", yDataR, charts.WithLineChartOpts(opts.LineChart{YAxisIndex: 1}))
 
@@ -222,27 +234,27 @@ func renderChart(image Image, dataFolder, renderFolder string) {
 	line.Render(o)
 }
 
-func AddMarklines(line *charts.Line, image string) {
-	releases := make(map[string]string)
-	switch image {
-	case "falcosecurity_falcosidekick":
-		releases = falcosidekick_versions()
-	case "falcosecurity_falcosidekick-ui":
-		releases = falcosidekick_ui_versions()
-	case "falcosecurity_falcoctl":
-		releases = falcoctl_versions()
-	case "falcosecurity_falco", "falcosecurity_falco-no-driver", "falcosecurity_falco-driver-loader", "falcosecurity_falco-driver-loader-legacy":
-		releases = falco_versions()
-	case "SUM_falco", "SUM_falco-driver-loader":
-		releases = falco_versions()
-	case "falcosecurity_falco-talon", "SUM_falco-talon":
-		releases = falco_talon_versions()
-	}
+// func AddMarklines(line *charts.Line, image string) {
+// 	releases := make(map[string]string)
+// 	switch image {
+// 	case "falcosecurity_falcosidekick":
+// 		releases = falcosidekick_versions()
+// 	case "falcosecurity_falcosidekick-ui":
+// 		releases = falcosidekick_ui_versions()
+// 	case "falcosecurity_falcoctl":
+// 		releases = falcoctl_versions()
+// 	case "falcosecurity_falco", "falcosecurity_falco-no-driver", "falcosecurity_falco-driver-loader", "falcosecurity_falco-driver-loader-legacy":
+// 		releases = falco_versions()
+// 	case "SUM_falco", "SUM_falco-driver-loader":
+// 		releases = falco_versions()
+// 	case "falcosecurity_falco-talon", "SUM_falco-talon":
+// 		releases = falco_talon_versions()
+// 	}
 
-	for date, version := range releases {
-		AddMarkline(line, date, version)
-	}
-}
+// 	for date, version := range releases {
+// 		AddMarkline(line, date, version)
+// 	}
+// }
 
 func AddMarkline(line *charts.Line, date, version string) {
 	line.SetSeriesOptions(
@@ -506,7 +518,7 @@ func falco_talon_versions() map[string]string {
 	releases := map[string]string{
 		"2024/09/06": "0.1.0",
 		"2024/10/01": "0.1.1",
-		"2024/11/27": "0.2.O",
+		"2024/11/27": "0.2.0",
 		"2024/12/09": "0.2.1",
 		"2025/02/07": "0.3.0",
 	}
