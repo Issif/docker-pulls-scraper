@@ -17,9 +17,11 @@ Usage of docker-pulls-scraper:
         Destination folder for .csv (default "./data")
   -l string
         File with the list of images to track
-  -r string
-        Destination folder for the .html (default "./render")
 ```
+
+## Website
+
+`index.html` is a self-contained, static single-page app: a list of images/sums on the left, and clicking one on the right renders its chart (via echarts, fetching the corresponding `.csv` client-side) along with stats (total, 24h/7d/30d change). It requires no server, just static file hosting.
 
 ## List of images
 
@@ -32,7 +34,7 @@ owner/image-3
 ```
 
 ### Results
-
+ -l
 Log:
 ```
 ❯ go run . -l list.txt

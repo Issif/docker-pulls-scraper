@@ -8,6 +8,7 @@ import (
 	"html/template"
 	"io"
 	"log"
+	"maps"
 	"net/http"
 	"os"
 	"sort"
@@ -16,8 +17,6 @@ import (
 	"time"
 
 	humanize "github.com/dustin/go-humanize"
-	"github.com/go-echarts/go-echarts/v2/charts"
-	"github.com/go-echarts/go-echarts/v2/opts"
 	yaml "gopkg.in/yaml.v3"
 )
 
@@ -55,7 +54,6 @@ func init() {
 func main() {
 	l := flag.String("l", "", "YAML file with the list of images to track")
 	dataFolder := flag.String("d", "./data", "Destination folder for .csv")
-	renderFolder := flag.String("r", "./render", "Destination folder for the .html")
 	flag.Parse()
 
 	if *l == "" {
@@ -68,12 +66,6 @@ func main() {
 			log.Fatal(err)
 		}
 		log.Printf("Folder '%v' already exists\n", *dataFolder)
-	}
-	if err := os.Mkdir(*renderFolder, os.ModePerm); err != nil {
-		if !os.IsExist(err) {
-			log.Fatal(err)
-		}
-		log.Printf("Folder '%v' already exists\n", *renderFolder)
 	}
 
 	yamlFile, err := os.ReadFile(*l)
@@ -105,7 +97,6 @@ func main() {
 
 	for _, i := range images {
 		writeCSV(i, *dataFolder)
-		renderChart(i, *dataFolder, *renderFolder)
 	}
 
 	updateIndexHTML()
@@ -148,141 +139,58 @@ func writeCSV(image Image, dataFolder string) {
 	}
 }
 
-func renderChart(image Image, dataFolder, renderFolder string) {
-	baseName := strings.ReplaceAll(image.Name, "/", "_")
-	log.Printf("Writing of the .html for the image '%v' in '%v'\n", image.Name, fmt.Sprintf("%v/%v.html", renderFolder, baseName))
-	f, err := os.Open(fmt.Sprintf("%v/%v.csv", dataFolder, baseName))
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer f.Close()
+type ManifestEntry struct {
+	Name       string            `json:"name"`
+	File       string            `json:"file"`
+	Count      int               `json:"count"`
+	HumanCount string            `json:"humanCount"`
+	IsSum      bool              `json:"isSum"`
+	Versions   map[string]string `json:"versions,omitempty"`
+}
 
-	xData := make([]string, 0)
-	yDataL := make([]opts.LineData, 0)
-	yDataR := make([]opts.LineData, 0)
+type IndexData struct {
+	Images       []Image
+	ManifestJSON template.JS
+}
 
-	fileScanner := bufio.NewScanner(f)
-	fileScanner.Scan()
-	for fileScanner.Scan() {
-		s := fileScanner.Text()
-		xData = append(xData, strings.Split(s, ",")[0])
-		yDataL = append(yDataL, opts.LineData{Value: strings.Split(s, ",")[1]})
-		yDataR = append(yDataR, opts.LineData{Value: strings.Split(s, ",")[2]})
-	}
-	if err := fileScanner.Err(); err != nil {
-		log.Fatal(err)
-	}
-
-	line := charts.NewLine()
-	line.SetGlobalOptions(
-		charts.WithInitializationOpts(opts.Initialization{
-			PageTitle: image.Name,
-			Width:     "100%",
-			Height:    "95vh"}),
-		charts.WithTitleOpts(opts.Title{
-			Title: image.Name,
-		}),
-		charts.WithColorsOpts(opts.Colors{"#ff9999", "#00ff77"}),
-		charts.WithDataZoomOpts(opts.DataZoom{
-			Type:  "slider",
-			Start: 0,
-			End:   100,
-		}),
-		charts.WithLegendOpts(opts.Legend{
-			Show:         opts.Bool(true),
-			SelectedMode: "multiple",
-		}),
-		charts.WithTooltipOpts(opts.Tooltip{
-			Show:    opts.Bool(true),
-			Trigger: "axis",
-			AxisPointer: &opts.AxisPointer{
-				Type: "cross",
-				Snap: opts.Bool(true),
-			},
-		}),
-		charts.WithYAxisOpts(opts.YAxis{
-			Name: "# pulls",
-			Type: "value",
-			Show: opts.Bool(true),
-		}),
-		charts.WithColorsOpts(opts.Colors{"blue", "orange"}),
-	)
-
-	line.ExtendYAxis(opts.YAxis{
-		Name:  "delta",
-		Type:  "value",
-		Show:  opts.Bool(true),
-		Scale: opts.Bool(true),
-	})
-
-	line.SetXAxis(xData)
-	line.AddSeries("# pulls", yDataL)
-
+func versionsForImage(name string) map[string]string {
+	releases := make(map[string]string)
 	for _, i := range list.Versions {
 		for _, j := range i.Images {
-			if image.Name == j {
-				for date, version := range i.Releases {
-					AddMarkline(line, date, version)
-				}
+			if name == j {
+				maps.Copy(releases, i.Releases)
 			}
 		}
 	}
-
-	line.AddSeries("delta", yDataR, charts.WithLineChartOpts(opts.LineChart{YAxisIndex: 1}))
-
-	o, _ := os.Create(fmt.Sprintf("%v/%v.html", renderFolder, baseName))
-	line.Render(o)
-}
-
-// func AddMarklines(line *charts.Line, image string) {
-// 	releases := make(map[string]string)
-// 	switch image {
-// 	case "falcosecurity_falcosidekick":
-// 		releases = falcosidekick_versions()
-// 	case "falcosecurity_falcosidekick-ui":
-// 		releases = falcosidekick_ui_versions()
-// 	case "falcosecurity_falcoctl":
-// 		releases = falcoctl_versions()
-// 	case "falcosecurity_falco", "falcosecurity_falco-no-driver", "falcosecurity_falco-driver-loader", "falcosecurity_falco-driver-loader-legacy":
-// 		releases = falco_versions()
-// 	case "SUM_falco", "SUM_falco-driver-loader":
-// 		releases = falco_versions()
-// 	case "falcosecurity_falco-talon", "SUM_falco-talon":
-// 		releases = falco_talon_versions()
-// 	}
-
-// 	for date, version := range releases {
-// 		AddMarkline(line, date, version)
-// 	}
-// }
-
-func AddMarkline(line *charts.Line, date, version string) {
-	line.SetSeriesOptions(
-		charts.WithMarkLineNameXAxisItemOpts(
-			opts.MarkLineNameXAxisItem{
-				Name:  version,
-				XAxis: date,
-			},
-		),
-		charts.WithMarkLineStyleOpts(opts.MarkLineStyle{
-			Label: &opts.Label{
-				Show:      opts.Bool(true),
-				Formatter: "{b}",
-			},
-			LineStyle: &opts.LineStyle{Color: "gray"},
-		}),
-		charts.WithLineChartOpts(opts.LineChart{
-			ShowSymbol: opts.Bool(true),
-		}),
-		charts.WithLabelOpts(opts.Label{
-			Show: opts.Bool(false),
-		}),
-	)
-
+	if len(releases) == 0 {
+		return nil
+	}
+	return releases
 }
 
 func updateIndexHTML() {
 	log.Println("Writing of the index.html")
+
+	sort.Slice(images, func(i, j int) bool {
+		return images[i].Count > images[j].Count
+	})
+
+	manifest := make([]ManifestEntry, 0, len(images))
+	for _, i := range images {
+		manifest = append(manifest, ManifestEntry{
+			Name:       i.Name,
+			File:       strings.ReplaceAll(i.Name, "/", "_") + ".csv",
+			Count:      i.Count,
+			HumanCount: i.HumanCount,
+			IsSum:      strings.HasPrefix(i.Name, "SUM"),
+			Versions:   versionsForImage(i.Name),
+		})
+	}
+
+	manifestJSON, err := json.Marshal(manifest)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	templateStr := `
 <!DOCTYPE html>
@@ -292,33 +200,22 @@ func updateIndexHTML() {
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
 	<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
+	<script src="https://go-echarts.github.io/go-echarts-assets/assets/echarts.min.js"></script>
 	<title>Docker pull counts</title>
+	<style>
+		tr[data-name] { cursor: pointer; }
+		tr[data-name].active-chart { background-color: #e3f2fd; }
+		.stats-row { display: flex; gap: 16px; margin: 20px 20px 0 20px; }
+		.stat-card { flex: 1; background: #f5f5f5; border-radius: 6px; padding: 12px 16px; box-shadow: 0 1px 3px rgba(0,0,0,.15); }
+		.stat-label { font-size: .8rem; color: #666; text-transform: uppercase; letter-spacing: .03em; }
+		.stat-value { font-size: 1.4rem; font-weight: 600; margin-top: 4px; }
+		.stat-value.up { color: #2e7d32; }
+		.stat-value.down { color: #c62828; }
+		#chart-title { margin: 20px 0 0 20px; font-size: 1.5rem; font-weight: 500; }
+	</style>
 </head>
 <body>
 	<div class="row flex">
-		<div class="col s3">
-		<table class="striped responsive-table" style="margin: 20px">
-			<caption>IMAGES</caption>
-			<thead>
-				<tr>
-					<th>Image</th>
-					<th>Last count</th>
-					<th>Chart</th>
-				</tr>
-			</thead>
-			<tbody>
-				{{- range . }}
-				{{ if not (hasPrefix .Name "SUM") }}
-					<tr>
-						<td><a href="https://hub.docker.com/r/{{ .Name }}">{{ .Name }}</a></td>
-						<td>{{ .HumanCount }}</td>
-						<td><a href="render/{{ replace .Name "/" "_" }}.html"><span class="material-symbols-outlined">monitoring</span></a></td>
-					</tr>
-				{{ end }}
-				{{- end }}
-			</tbody>
-		</table>
-		</div>
 		<div class="col s3">
 		<table class="striped responsive-table" style="margin: 20px">
 			<caption>SUMS</caption>
@@ -330,28 +227,208 @@ func updateIndexHTML() {
 				</tr>
 			</thead>
 			<tbody>
-				{{- range . }}
+				{{- range .Images }}
 				{{ if (hasPrefix .Name "SUM") }}
-					<tr>
-						<td><a href="https://hub.docker.com/r/{{ .Name }}">{{ .Name }}</a></td>
+					<tr data-name="{{ .Name }}">
+						<td><a href="https://hub.docker.com/r/{{ .Name }}" target="_blank" rel="noopener">{{ .Name }}</a></td>
 						<td>{{ .HumanCount }}</td>
-						<td><a href="render/{{ replace .Name "/" "_" }}.html"><span class="material-symbols-outlined">monitoring</span></a></td>
+						<td><span class="material-symbols-outlined">monitoring</span></td>
+					</tr>
+				{{ end }}
+				{{- end }}
+			</tbody>
+		</table>
+		<table class="striped responsive-table" style="margin: 20px">
+			<caption>IMAGES</caption>
+			<thead>
+				<tr>
+					<th>Image</th>
+					<th>Last count</th>
+					<th>Chart</th>
+				</tr>
+			</thead>
+			<tbody>
+				{{- range .Images }}
+				{{ if not (hasPrefix .Name "SUM") }}
+					<tr data-name="{{ .Name }}">
+						<td><a href="https://hub.docker.com/r/{{ .Name }}" target="_blank" rel="noopener">{{ .Name }}</a></td>
+						<td>{{ .HumanCount }}</td>
+						<td><span class="material-symbols-outlined">monitoring</span></td>
 					</tr>
 				{{ end }}
 				{{- end }}
 			</tbody>
 		</table>
 		</div>
+		<div class="col s9">
+			<div id="chart-title"></div>
+			<div class="stats-row">
+				<div class="stat-card">
+					<div class="stat-label">Total</div>
+					<div class="stat-value" id="stat-total">-</div>
+				</div>
+				<div class="stat-card">
+					<div class="stat-label">24h change</div>
+					<div class="stat-value" id="stat-1d">-</div>
+				</div>
+				<div class="stat-card">
+					<div class="stat-label">7d change</div>
+					<div class="stat-value" id="stat-7d">-</div>
+				</div>
+				<div class="stat-card">
+					<div class="stat-label">30d change</div>
+					<div class="stat-value" id="stat-30d">-</div>
+				</div>
+			</div>
+			<div id="chart" style="width: 100%; height: 75vh; margin-top: 10px;"></div>
+		</div>
 	</div>
+	<script>
+		"use strict";
+		const MANIFEST = {{ .ManifestJSON }};
+		const manifestByName = {};
+		MANIFEST.forEach(function (m) { manifestByName[m.name] = m; });
+
+		const chartEl = document.getElementById("chart");
+		const chartTitleEl = document.getElementById("chart-title");
+		let chartInstance = null;
+		const csvCache = {};
+
+		function parseCSV(text) {
+			const lines = text.trim().split("\n");
+			lines.shift();
+			return lines.filter(Boolean).map(function (line) {
+				const parts = line.split(",");
+				return { date: parts[0], count: parseInt(parts[1], 10), delta: parseInt(parts[2], 10) };
+			});
+		}
+
+		function pctChange(rows, daysBack) {
+			const n = rows.length;
+			const idx = n - 1 - daysBack;
+			if (idx < 0) return null;
+			const past = rows[idx].count;
+			const now = rows[n - 1].count;
+			if (!past) return null;
+			return ((now - past) / past) * 100;
+		}
+
+		function formatPct(value) {
+			if (value === null) return "N/A";
+			const sign = value > 0 ? "+" : "";
+			return sign + value.toFixed(2) + "%";
+		}
+
+		function setStat(id, value) {
+			const el = document.getElementById(id);
+			el.textContent = formatPct(value);
+			el.classList.remove("up", "down");
+			if (value !== null) {
+				el.classList.add(value >= 0 ? "up" : "down");
+			}
+		}
+
+		function renderStats(rows) {
+			const total = rows[rows.length - 1].count;
+			document.getElementById("stat-total").textContent = total.toLocaleString("en-US");
+			setStat("stat-1d", pctChange(rows, 1));
+			setStat("stat-7d", pctChange(rows, 7));
+			setStat("stat-30d", pctChange(rows, 30));
+		}
+
+		function renderImageChart(entry, rows) {
+			if (!chartInstance) {
+				chartInstance = echarts.init(chartEl, "white", { renderer: "canvas" });
+			}
+
+			const markLineData = [];
+			if (entry.versions) {
+				Object.keys(entry.versions).forEach(function (date) {
+					markLineData.push({ name: entry.versions[date], xAxis: date });
+				});
+			}
+
+			const option = {
+				color: ["blue", "orange"],
+				dataZoom: [{ type: "slider", start: 0, end: 100 }],
+				legend: { show: true, selectedMode: "multiple" },
+				tooltip: {
+					show: true,
+					trigger: "axis",
+					axisPointer: { type: "cross", snap: true }
+				},
+				xAxis: { type: "category", data: rows.map(function (r) { return r.date; }) },
+				yAxis: [
+					{ name: "# pulls", type: "value", show: true },
+					{ name: "delta", type: "value", show: true, scale: true }
+				],
+				series: [
+					{
+						name: "# pulls",
+						type: "line",
+						showSymbol: true,
+						data: rows.map(function (r) { return r.count; }),
+						markLine: markLineData.length ? {
+							symbol: "none",
+							label: { show: true, formatter: "{b}" },
+							lineStyle: { color: "gray" },
+							data: markLineData
+						} : undefined
+					},
+					{
+						name: "delta",
+						type: "line",
+						showSymbol: true,
+						yAxisIndex: 1,
+						data: rows.map(function (r) { return r.delta; })
+					}
+				]
+			};
+
+			chartInstance.setOption(option, true);
+		}
+
+		async function selectImage(name) {
+			const entry = manifestByName[name];
+			if (!entry) return;
+
+			document.querySelectorAll("tr[data-name]").forEach(function (tr) {
+				tr.classList.toggle("active-chart", tr.getAttribute("data-name") === name);
+			});
+			chartTitleEl.textContent = entry.name;
+
+			let rows = csvCache[entry.file];
+			if (!rows) {
+				const res = await fetch("data/" + entry.file);
+				const text = await res.text();
+				rows = parseCSV(text);
+				csvCache[entry.file] = rows;
+			}
+
+			renderStats(rows);
+			renderImageChart(entry, rows);
+		}
+
+		document.querySelectorAll("tbody").forEach(function (tbody) {
+			tbody.addEventListener("click", function (e) {
+				const tr = e.target.closest("tr[data-name]");
+				if (!tr) return;
+				selectImage(tr.getAttribute("data-name"));
+			});
+		});
+
+		window.addEventListener("resize", function () {
+			if (chartInstance) chartInstance.resize();
+		});
+
+		if (MANIFEST.length) {
+			selectImage(MANIFEST[0].name);
+		}
+	</script>
 </body>
 </html>`
 	parsedTemplate, err := template.
 		New("index").
-		Funcs(template.FuncMap{
-			"replace": func(input, from, to string) string {
-				return strings.ReplaceAll(input, from, to)
-			},
-		}).
 		Funcs(template.FuncMap{
 			"hasPrefix": strings.HasPrefix,
 		}).
@@ -359,17 +436,18 @@ func updateIndexHTML() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	f, err := os.OpenFile("index.html", os.O_RDWR|os.O_CREATE, 0744)
+	f, err := os.OpenFile("index.html", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0744)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer f.Close()
 
-	sort.Slice(images, func(i, j int) bool {
-		return images[i].Count > images[j].Count
-	})
+	data := IndexData{
+		Images:       images,
+		ManifestJSON: template.JS(manifestJSON),
+	}
 
-	err = parsedTemplate.Execute(f, images)
+	err = parsedTemplate.Execute(f, data)
 	if err != nil {
 		log.Fatal(err)
 	}
