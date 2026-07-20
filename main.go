@@ -388,7 +388,7 @@ func updateIndexHTML() {
 			chartInstance.setOption(option, true);
 		}
 
-		async function selectImage(name) {
+		async function selectImage(name, updateHash) {
 			const entry = manifestByName[name];
 			if (!entry) return;
 
@@ -396,6 +396,10 @@ func updateIndexHTML() {
 				tr.classList.toggle("active-chart", tr.getAttribute("data-name") === name);
 			});
 			chartTitleEl.textContent = entry.name;
+
+			if (updateHash !== false) {
+				history.replaceState(null, "", "#" + encodeURIComponent(name));
+			}
 
 			let rows = csvCache[entry.file];
 			if (!rows) {
@@ -421,8 +425,14 @@ func updateIndexHTML() {
 			if (chartInstance) chartInstance.resize();
 		});
 
+		window.addEventListener("hashchange", function () {
+			const name = decodeURIComponent(location.hash.slice(1));
+			if (manifestByName[name]) selectImage(name);
+		});
+
 		if (MANIFEST.length) {
-			selectImage(MANIFEST[0].name);
+			const fromHash = decodeURIComponent(location.hash.slice(1));
+			selectImage(manifestByName[fromHash] ? fromHash : MANIFEST[0].name);
 		}
 	</script>
 </body>
